@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 const MOBILE_NAV = [
   { to: '/', label: 'Inicio' },
-  { to: '/dashboard', label: 'Dashboard' },
+  { to: '/dashboard', label: 'Visão geral' },
   { to: '/students/register', label: 'Cadastrar aluno' },
   { to: '/entry', label: 'Entrada' },
   { to: '/exit', label: 'Saida' },

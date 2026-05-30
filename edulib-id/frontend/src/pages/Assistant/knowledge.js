@@ -20,7 +20,7 @@ const ENTRIES = [
   {
     keywords: ['multa', 'atraso'],
     answer:
-      'O Edulib-ID nao aplica multa em dinheiro. Emprestimos em atraso geram o status "Em atraso" no dashboard e impedem novos emprestimos para o mesmo aluno ate a regularizacao.',
+      'O Edulib-ID nao aplica multa em dinheiro. Emprestimos em atraso geram o status "Em atraso" na Visao geral e impedem novos emprestimos para o mesmo aluno ate a regularizacao.',
   },
   {
     keywords: ['cadastrar', 'cadastro', 'novo aluno', 'matricular', 'inscrever'],
@@ -58,9 +58,9 @@ const ENTRIES = [
       'Em "Devolucao": identifique o aluno e clique em "Devolver" no livro correspondente. A quantidade disponivel e restaurada e o emprestimo recebe a data de devolucao.',
   },
   {
-    keywords: ['dashboard', 'metricas', 'estatisticas', 'numero', 'quantos'],
+    keywords: ['dashboard', 'visao geral', 'metricas', 'estatisticas', 'numero', 'quantos'],
     answer:
-      'O Dashboard mostra total de alunos cadastrados, livros disponiveis, emprestimos ativos, atrasos, entradas/saidas do dia e atividade recente.',
+      'A Visao geral mostra total de alunos cadastrados, livros disponiveis, emprestimos ativos, atrasos, entradas/saidas do dia e atividade recente.',
   },
   {
     keywords: ['banco', 'localstorage', 'postgres', 'supabase'],
@@ -70,7 +70,7 @@ const ENTRIES = [
 ];
 
 const FALLBACK =
-  'Nao consegui responder com certeza essa duvida. Tente reformular - posso ajudar com horarios, prazos, cadastro, emprestimos, devolucoes, QR Code, reconhecimento facial e dashboard.';
+  'Nao consegui responder com certeza essa duvida. Tente reformular - posso ajudar com horarios, prazos, cadastro, emprestimos, devolucoes, QR Code, reconhecimento facial e Visao geral.';
 
 function normalize(text) {
   return text

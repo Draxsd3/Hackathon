@@ -102,7 +102,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         icon={LayoutDashboard}
-        title="Dashboard"
+        title="Visão geral"
         subtitle="Indicadores e ultimos eventos da biblioteca."
       />
 

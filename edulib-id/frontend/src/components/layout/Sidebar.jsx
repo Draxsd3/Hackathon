@@ -13,7 +13,7 @@ import {
 
 const NAV = [
   { to: '/', label: 'Inicio', icon: Home, exact: true },
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/dashboard', label: 'Visão geral', icon: LayoutDashboard },
   { to: '/students/register', label: 'Cadastrar aluno', icon: UserPlus },
   { to: '/entry', label: 'Entrada', icon: LogIn },
   { to: '/exit', label: 'Saida', icon: LogOut },

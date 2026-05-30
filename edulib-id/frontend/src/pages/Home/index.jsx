@@ -19,7 +19,7 @@ const SHORTCUTS = [
   { to: '/loan', icon: BookPlus, title: 'Emprestimo', description: 'Empreste um livro do acervo para um aluno.' },
   { to: '/return', icon: BookCheck, title: 'Devolucao', description: 'Devolva livros emprestados rapidamente.' },
   { to: '/assistant', icon: Bot, title: 'Assistente', description: 'Tire duvidas sobre regras, horarios e fluxos.' },
-  { to: '/dashboard', icon: LayoutDashboard, title: 'Dashboard', description: 'Acompanhe metricas e atividade em tempo real.' },
+  { to: '/dashboard', icon: LayoutDashboard, title: 'Visão geral', description: 'Acompanhe metricas e atividade em tempo real.' },
 ];
 
 export default function HomePage() {

@@ -68,7 +68,7 @@ import {
 import { formatDate, formatDateTime, formatTime } from '../../utils/dateUtils.js';
 
 const NAV_ITEMS = [
-  { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { key: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
   { key: 'operations', label: 'Operacao', icon: ScanFace },
   { key: 'library', label: 'Acervo', icon: BookOpen },
   { key: 'students', label: 'Alunos', icon: Users },
