@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertTriangle,
@@ -71,6 +71,7 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Visão geral', icon: LayoutDashboard },
   { key: 'operations', label: 'Operacao', icon: ScanFace },
   { key: 'library', label: 'Acervo', icon: BookOpen },
+  { key: 'audit', label: 'Auditoria', icon: ClipboardList },
   { key: 'students', label: 'Alunos', icon: Users },
   { key: 'reports', label: 'Relatorios', icon: FileBarChart },
   { key: 'settings', label: 'Configuracoes', icon: Settings },
@@ -3941,6 +3942,480 @@ function AdminSegmentModule({ variant }) {
   );
 }
 
+function AuditModule({ books }) {
+  const toast = useToast();
+  const [status, setStatus] = useState('idle'); // idle | running | paused | finished
+  const [validatedMap, setValidatedMap] = useState({}); // { [bookId]: ISOtimestamp }
+  const [unknownTags, setUnknownTags] = useState([]); // [{ tag, at }]
+  const [feedback, setFeedback] = useState(null); // { type: 'success'|'duplicate'|'unknown'|'error', message }
+  const [readerStatus, setReaderStatus] = useState('idle'); // idle | waiting | error | unavailable
+  const [readerError, setReaderError] = useState('');
+
+  const total = books.length;
+  const validatedCount = Object.keys(validatedMap).length;
+  const pendingCount = Math.max(0, total - validatedCount);
+  const percent = total > 0 ? Math.round((validatedCount / total) * 100) : 0;
+
+  const pendingBooks = useMemo(
+    () => books.filter((b) => !(b.id in validatedMap)),
+    [books, validatedMap]
+  );
+  const validatedBooks = useMemo(
+    () =>
+      books
+        .filter((b) => b.id in validatedMap)
+        .map((b) => ({ ...b, scannedAt: validatedMap[b.id] }))
+        .sort((a, b) => b.scannedAt.localeCompare(a.scannedAt)),
+    [books, validatedMap]
+  );
+
+  const normalizeTag = (raw) =>
+    String(raw || '').replace(/^nfc:/i, '').replace(/[:\s]/g, '').trim().toUpperCase();
+
+  const handleTag = useCallback(
+    (rawTag) => {
+      const tag = normalizeTag(rawTag);
+      if (!tag) return;
+
+      const at = new Date().toISOString();
+      const book = books.find((b) => normalizeTag(b.rfid) === tag);
+
+      if (!book) {
+        setUnknownTags((prev) => [{ tag, at }, ...prev].slice(0, 20));
+        setFeedback({ type: 'unknown', message: `Tag desconhecida: ${tag}` });
+        eventService
+          .create({ type: 'audit.tag.unknown', payload: { tag, at } })
+          .catch(() => {});
+        return;
+      }
+
+      if (book.id in validatedMap) {
+        setFeedback({ type: 'duplicate', message: `"${book.title}" ja foi validado.` });
+        eventService
+          .create({ type: 'audit.tag.duplicate', payload: { bookId: book.id, tag, at } })
+          .catch(() => {});
+        return;
+      }
+
+      setValidatedMap((prev) => ({ ...prev, [book.id]: at }));
+      setFeedback({ type: 'success', message: `"${book.title}" validado.` });
+      eventService
+        .create({
+          type: 'audit.book.validated',
+          payload: { bookId: book.id, title: book.title, rfid: tag, at },
+        })
+        .catch(() => {});
+    },
+    [books, validatedMap]
+  );
+
+  // Mantemos handleTag via ref para nao reiniciar o leitor a cada validacao.
+  const handleTagRef = useRef(handleTag);
+  useEffect(() => {
+    handleTagRef.current = handleTag;
+  }, [handleTag]);
+
+  // Leitor NFC continuo: inicia quando a auditoria entra em 'running' e
+  // para em qualquer outro estado.
+  useEffect(() => {
+    if (status !== 'running') {
+      setReaderStatus((prev) => (prev === 'waiting' ? 'idle' : prev));
+      return undefined;
+    }
+
+    if (typeof window === 'undefined' || !window.isSecureContext) {
+      setReaderStatus('error');
+      setReaderError('A leitura NFC exige HTTPS.');
+      return undefined;
+    }
+    if (!('NDEFReader' in window)) {
+      setReaderStatus('unavailable');
+      setReaderError('Use Chrome no Android para ler tags NFC.');
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const reader = new window.NDEFReader();
+        reader.onreading = (event) => handleTagRef.current(event.serialNumber || '');
+        reader.onreadingerror = () => {
+          if (!cancelled) setFeedback({ type: 'error', message: 'Falha de leitura, tente de novo.' });
+        };
+        setReaderStatus('waiting');
+        setReaderError('');
+        await reader.scan({ signal: controller.signal });
+      } catch (err) {
+        if (cancelled || err.name === 'AbortError') return;
+        setReaderStatus('error');
+        setReaderError(err.message || 'Nao foi possivel iniciar a leitura NFC.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [status]);
+
+  const start = () => {
+    setValidatedMap({});
+    setUnknownTags([]);
+    setFeedback(null);
+    setStatus('running');
+    eventService.create({ type: 'audit.started', payload: { total } }).catch(() => {});
+    toast.success('Auditoria iniciada.');
+  };
+
+  const pause = () => {
+    setStatus('paused');
+    eventService
+      .create({ type: 'audit.paused', payload: { validatedCount, pendingCount } })
+      .catch(() => {});
+    toast.info('Auditoria pausada.');
+  };
+
+  const resume = () => {
+    setStatus('running');
+    eventService
+      .create({ type: 'audit.resumed', payload: { validatedCount, pendingCount } })
+      .catch(() => {});
+  };
+
+  const generateReport = () => {
+    const report = {
+      generatedAt: new Date().toISOString(),
+      summary: { total, validatedCount, pendingCount, percent, unknownCount: unknownTags.length },
+      validated: validatedBooks.map((b) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        copyCode: b.copyCode,
+        rfid: b.rfid,
+        scannedAt: b.scannedAt,
+      })),
+      pending: pendingBooks.map((b) => ({
+        id: b.id,
+        title: b.title,
+        author: b.author,
+        copyCode: b.copyCode,
+        rfid: b.rfid,
+      })),
+      unknown: unknownTags,
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `auditoria-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const finish = () => {
+    setStatus('finished');
+    eventService
+      .create({
+        type: 'audit.finished',
+        payload: { total, validatedCount, pendingCount, percent, unknownCount: unknownTags.length },
+      })
+      .catch(() => {});
+    generateReport();
+    toast.success('Auditoria finalizada. Relatorio baixado.');
+  };
+
+  const reset = () => {
+    setStatus('idle');
+    setValidatedMap({});
+    setUnknownTags([]);
+    setFeedback(null);
+    setReaderStatus('idle');
+    setReaderError('');
+  };
+
+  const statusBadge = {
+    idle: { label: 'Aguardando inicio', tone: 'slate' },
+    running: { label: 'Em andamento', tone: 'emerald' },
+    paused: { label: 'Pausada', tone: 'amber' },
+    finished: { label: 'Finalizada', tone: 'slate' },
+  }[status];
+
+  const readerBadge =
+    status === 'running'
+      ? readerStatus === 'waiting'
+        ? { label: 'Aguardando leitura...', tone: 'emerald' }
+        : readerStatus === 'error'
+        ? { label: 'Erro no leitor', tone: 'red' }
+        : readerStatus === 'unavailable'
+        ? { label: 'Leitor indisponivel', tone: 'red' }
+        : { label: 'Inicializando...', tone: 'amber' }
+      : status === 'paused'
+      ? { label: 'Pausado', tone: 'amber' }
+      : status === 'finished'
+      ? { label: 'Finalizado', tone: 'slate' }
+      : { label: 'Inativo', tone: 'slate' };
+
+  const toneClasses = (tone) =>
+    tone === 'emerald'
+      ? 'bg-emerald-50 text-emerald-700'
+      : tone === 'amber'
+      ? 'bg-amber-50 text-amber-700'
+      : tone === 'red'
+      ? 'bg-red-50 text-red-700'
+      : 'bg-slate-100 text-slate-600';
+
+  const pillClasses = (tone) =>
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : tone === 'amber'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : tone === 'red'
+      ? 'border-red-200 bg-red-50 text-red-700'
+      : 'border-slate-200 bg-slate-50 text-slate-600';
+
+  return (
+    <div className="space-y-5 pb-24">
+      <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-semibold text-slate-950">Auditoria dos livros</h3>
+        <p className="mt-1 text-xs text-slate-500">Conferência física do acervo da biblioteca</p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <MetricCard label="Total de livros" value={total} icon={BookOpen} tone="blue" />
+        <MetricCard
+          label="Validados"
+          value={validatedCount}
+          icon={CheckCircle2}
+          tone="emerald"
+          detail={status === 'running' || status === 'paused' ? 'em andamento' : null}
+        />
+        <MetricCard label="Pendentes" value={pendingCount} icon={ClipboardList} tone="amber" />
+        <MetricCard
+          label="Conclusao"
+          value={`${percent}%`}
+          icon={Activity}
+          tone="violet"
+          detail={total > 0 ? `${validatedCount} de ${total}` : 'sem itens'}
+        />
+        <MetricCard
+          label="Status"
+          value={statusBadge.label}
+          icon={Tag}
+          tone={statusBadge.tone === 'emerald' ? 'emerald' : statusBadge.tone === 'amber' ? 'amber' : 'slate'}
+        />
+      </div>
+
+      {total === 0 && (
+        <div className="rounded-md border-2 border-dashed border-slate-300 bg-white p-12 text-center">
+          <Library className="mx-auto h-10 w-10 text-slate-300" />
+          <p className="mt-3 text-sm font-semibold text-slate-700">Nenhum livro encontrado para auditoria.</p>
+          <p className="mt-1 text-xs text-slate-500">Cadastre livros no Acervo antes de iniciar uma auditoria.</p>
+        </div>
+      )}
+
+      {status === 'idle' && total > 0 && (
+        <div className="rounded-md border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <SmartphoneNfc className="mx-auto h-10 w-10 text-[#b70f16]" />
+          <h3 className="mt-3 text-base font-semibold text-slate-950">Pronto para iniciar a auditoria</h3>
+          <p className="mt-1 text-xs text-slate-500">
+            {total} {total === 1 ? 'livro sera conferido' : 'livros serao conferidos'}. Voce pode pausar ou finalizar a qualquer momento.
+          </p>
+          <button
+            type="button"
+            onClick={start}
+            className="mt-4 inline-flex h-11 items-center gap-2 rounded-md bg-[#b70f16] px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9d0d13]"
+          >
+            <ClipboardList className="h-4 w-4" />
+            Iniciar auditoria
+          </button>
+        </div>
+      )}
+
+      {feedback && status !== 'idle' && (
+        <div
+          className={`flex items-center gap-3 rounded-md border px-3 py-2 text-xs ${
+            feedback.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : feedback.type === 'duplicate'
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}
+        >
+          {feedback.type === 'success' ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <AlertTriangle className="h-4 w-4" />
+          )}
+          <span className="flex-1">{feedback.message}</span>
+          <button
+            type="button"
+            onClick={() => setFeedback(null)}
+            className="rounded p-1 hover:bg-black/10"
+            aria-label="Fechar"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      )}
+
+      {total > 0 && status !== 'idle' && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <Section title={`Livros pendentes (${pendingCount})`} subtitle="Aguardando leitura RFID">
+            <DataTable
+              emptyText={
+                validatedCount > 0
+                  ? 'Todos os livros foram validados.'
+                  : 'Nenhum livro pendente.'
+              }
+              columns={[
+                { key: 'title', label: 'Livro' },
+                { key: 'copyCode', label: 'Exemplar', render: (row) => row.copyCode || '-' },
+                {
+                  key: 'rfid',
+                  label: 'RFID',
+                  render: (row) => (
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                      {row.rfid || '-'}
+                    </code>
+                  ),
+                },
+                { key: 'status', label: 'Status', render: () => <StatusPill>Pendente</StatusPill> },
+              ]}
+              rows={pendingBooks}
+            />
+          </Section>
+
+          <Section title={`Livros validados (${validatedCount})`} subtitle="Confirmados via leitura RFID">
+            <DataTable
+              emptyText="Aproxime o celular do primeiro livro para iniciar."
+              columns={[
+                { key: 'title', label: 'Livro' },
+                { key: 'copyCode', label: 'Exemplar', render: (row) => row.copyCode || '-' },
+                {
+                  key: 'rfid',
+                  label: 'RFID',
+                  render: (row) => (
+                    <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700">
+                      {row.rfid || '-'}
+                    </code>
+                  ),
+                },
+                {
+                  key: 'scannedAt',
+                  label: 'Escaneado em',
+                  render: (row) => <span className="text-slate-600">{formatTime(row.scannedAt)}</span>,
+                },
+              ]}
+              rows={validatedBooks}
+            />
+          </Section>
+        </div>
+      )}
+
+      {unknownTags.length > 0 && status !== 'idle' && (
+        <Section
+          title={`Tags desconhecidas (${unknownTags.length})`}
+          subtitle="Etiquetas lidas que nao correspondem a nenhum exemplar"
+        >
+          <ul className="divide-y divide-slate-100 text-sm">
+            {unknownTags.slice(0, 10).map((entry, i) => (
+              <li key={`${entry.tag}-${i}`} className="flex items-center justify-between gap-3 py-2">
+                <code className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-700">
+                  {entry.tag}
+                </code>
+                <span className="text-xs text-slate-500">{formatTime(entry.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {status !== 'idle' && (
+        <div className="sticky bottom-0 left-0 right-0 z-10 -mx-4 sm:-mx-6 lg:-mx-8">
+          <div className="border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_12px_rgba(0,0,0,0.04)] sm:px-6 lg:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-1 min-w-0 items-center gap-3">
+                <span className={`flex h-10 w-10 flex-none items-center justify-center rounded-md ${toneClasses(readerBadge.tone)}`}>
+                  <SmartphoneNfc className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-950">
+                    {status === 'running'
+                      ? 'Aproxime o celular de um livro para escanear a tag RFID'
+                      : status === 'paused'
+                      ? 'Auditoria pausada - retome para continuar lendo'
+                      : 'Auditoria finalizada - baixe o relatorio ou inicie outra'}
+                  </p>
+                  {readerError && status === 'running' && (
+                    <p className="truncate text-xs text-red-600">{readerError}</p>
+                  )}
+                </div>
+                <span className={`hidden sm:inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${pillClasses(readerBadge.tone)}`}>
+                  {readerBadge.label}
+                </span>
+              </div>
+
+              <div className="flex flex-none items-center gap-2">
+                {status === 'running' && (
+                  <button
+                    type="button"
+                    onClick={pause}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <Clock3 className="h-4 w-4" />
+                    Pausar auditoria
+                  </button>
+                )}
+                {status === 'paused' && (
+                  <button
+                    type="button"
+                    onClick={resume}
+                    className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                  >
+                    <RotateCw className="h-4 w-4" />
+                    Retomar
+                  </button>
+                )}
+                {status === 'finished' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={reset}
+                      className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                    >
+                      <RotateCw className="h-4 w-4" />
+                      Nova auditoria
+                    </button>
+                    <button
+                      type="button"
+                      onClick={generateReport}
+                      className="inline-flex h-10 items-center gap-2 rounded-md bg-[#b70f16] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9d0d13]"
+                    >
+                      <Download className="h-4 w-4" />
+                      Baixar relatorio
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={finish}
+                    className="inline-flex h-10 items-center gap-2 rounded-md bg-[#b70f16] px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-[#9d0d13]"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Finalizar e gerar relatorio
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PlatformPage() {
   const toast = useToast();
   const [activeModule, setActiveModule] = useState(getInitialModule);
@@ -3974,6 +4449,7 @@ export default function PlatformPage() {
     dashboard: <DashboardModule students={students} books={books} loans={loans} sessions={sessions} />,
     operations: <OperationsModule students={students} books={books} loans={loans} sessions={sessions} reload={reload} />,
     library: <BooksModule students={students} books={books} loans={loans} events={events} reload={reload} />,
+    audit: <AuditModule books={books} reload={reload} />,
     students: <StudentsModule students={students} books={books} loans={loans} sessions={sessions} reload={reload} />,
     reports: <ReportsModule students={students} books={books} loans={loans} sessions={sessions} />,
     settings: <SettingsModule />,
