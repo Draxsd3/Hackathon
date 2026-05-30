@@ -4178,9 +4178,20 @@ function AuditModule({ books }) {
 
   return (
     <div className="space-y-5 pb-24">
-      <div className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-950">Auditoria dos livros</h3>
-        <p className="mt-1 text-xs text-slate-500">Conferência física do acervo da biblioteca</p>
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-sm">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950">Auditoria dos livros</h3>
+          <p className="mt-1 text-xs text-slate-500">Conferência física do acervo da biblioteca</p>
+        </div>
+        <a
+          href="/audit-mobile"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          <SmartphoneNfc className="h-4 w-4" />
+          Abrir no celular
+        </a>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
