@@ -4,6 +4,8 @@ const morgan = require('morgan');
 
 const env = require('./config/env');
 const routes = require('./routes');
+const doorRoutes = require('./routes/door.routes');
+const doorController = require('./controllers/door.controller');
 const { notFoundHandler, errorHandler } = require('./middlewares/error.middleware');
 
 const app = express();
@@ -71,6 +73,13 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan(env.isProduction ? 'combined' : 'dev'));
 
 app.use('/api/v1', routes);
+
+// Controle da fechadura via Arduino (porta serial USB).
+// /api/door/open   - POST envia 'A' ao Arduino (path canonico)
+// /api/door/status - GET diagnostico da porta serial
+// /api/abrir-porta - POST alias por compatibilidade
+app.use('/api/door', doorRoutes);
+app.post('/api/abrir-porta', doorController.openDoor);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

@@ -52,6 +52,7 @@ import { Input, Select } from '../../components/common/Input.jsx';
 import { Modal } from '../../components/common/Modal.jsx';
 import { useToast } from '../../components/common/Toast.jsx';
 import { bookService } from '../../services/bookService.js';
+import { doorService } from '../../services/doorService.js';
 import { eventService } from '../../services/eventService.js';
 import { loanService } from '../../services/loanService.js';
 import { rfidService } from '../../services/rfidService.js';
@@ -1389,6 +1390,8 @@ function OperationsModule({ students, books, loans, sessions, reload }) {
   const registerEntry = async (student, score) => {
     setProcessingState(true);
     setOperationStatus('Registrando entrada');
+    // Face validada -> dispara abertura da fechadura (fire-and-forget).
+    doorService.open({ studentId: student.id, method: 'face', actor: 'platform' });
     let sessionCreateStarted = false;
     try {
       sessionCreateStarted = true;

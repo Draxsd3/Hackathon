@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ScanLine, Search, Camera, X } from 'lucide-react';
 import { studentService } from '../../services/studentService.js';
+import { doorService } from '../../services/doorService.js';
 import { parsePayload } from '../../utils/qrUtils.js';
 import { computeDescriptor, captureFrame, detectFacePresence } from '../../utils/facialUtils.js';
 import { QRScanner } from '../qr/QRScanner.jsx';
@@ -209,6 +210,9 @@ function FaceMode({ onIdentify }) {
         return;
       }
       onIdentify(match);
+      // Face validada -> dispara abertura da fechadura (fire-and-forget).
+      // Erros (Arduino desconectado, backend offline) ficam apenas no console.
+      doorService.open({ studentId: match.id, method: 'face' });
     } catch (err) {
       setError(err.message || 'Erro ao identificar aluno.');
     } finally {
