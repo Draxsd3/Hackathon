@@ -8,6 +8,31 @@ const { notFoundHandler, errorHandler } = require('./middlewares/error.middlewar
 
 const app = express();
 
+function stripTrailingSlash(value) {
+  return (value || '').replace(/\/+$/, '');
+}
+
+// Lista de origens permitidas, normalizada (sem barra no final).
+const allowedOrigins = env.corsOrigin.map(stripTrailingSlash).filter(Boolean);
+
+// Padroes Vercel: previews/branches reusam o dominio base (hackathon-*.vercel.app).
+// Quando uma origem permitida termina em ".vercel.app", aceitamos o mesmo projeto
+// em qualquer subdominio gerado pela Vercel (preview, branch, deployment hash).
+const vercelProjectPatterns = allowedOrigins
+  .map((origin) => {
+    try {
+      const { hostname } = new URL(origin);
+      if (!hostname.endsWith('.vercel.app')) return null;
+      // Extrai o slug do projeto (parte antes do primeiro hifen na primeira label).
+      const projectSlug = hostname.split('.')[0].split('-')[0];
+      if (!projectSlug) return null;
+      return new RegExp(`^https?://${projectSlug}(-[a-z0-9]+)*\\.vercel\\.app$`, 'i');
+    } catch {
+      return null;
+    }
+  })
+  .filter(Boolean);
+
 function isAllowedDevOrigin(origin) {
   if (env.isProduction || !origin) return false;
   try {
@@ -21,12 +46,22 @@ function isAllowedDevOrigin(origin) {
   }
 }
 
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // requisicoes sem origem (curl, app nativo) passam
+  const normalized = stripTrailingSlash(origin);
+  if (allowedOrigins.includes(normalized)) return true;
+  if (vercelProjectPatterns.some((pattern) => pattern.test(normalized))) return true;
+  if (isAllowedDevOrigin(origin)) return true;
+  return false;
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || env.corsOrigin.includes(origin) || isAllowedDevOrigin(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
       return;
     }
+    console.warn(`[cors] origem rejeitada: ${origin}`);
     callback(new Error(`Origem CORS nao permitida: ${origin}`));
   },
   credentials: true,
