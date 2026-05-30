@@ -1,24 +1,53 @@
-/**
- * Camada de banco de dados.
- *
- * MVP: store em memoria - apenas para demonstrar o backend funcionando.
- * Na producao, troque por um pool de conexoes (pg, supabase-js, etc.) sem
- * mudar a assinatura dos services.
- */
+const { Pool } = require('pg');
+const env = require('./env');
+const supabaseRest = require('./supabaseRest');
 
-const store = {
-  students: new Map(),
-  books: new Map(),
-  sessions: new Map(),
-  loans: new Map(),
-  events: new Map(),
-};
+let pool;
 
-function getCollection(name) {
-  if (!store[name]) {
-    throw new Error(`Colecao desconhecida: ${name}`);
+function getPool() {
+  if (!env.databaseUrl) {
+    const err = new Error('DATABASE_URL nao configurada para conexao com Supabase/Postgres');
+    err.status = 503;
+    throw err;
   }
-  return store[name];
+
+  if (!pool) {
+    pool = new Pool({
+      connectionString: env.databaseUrl,
+      ssl: env.databaseSsl ? { rejectUnauthorized: false } : false,
+    });
+  }
+
+  return pool;
 }
 
-module.exports = { store, getCollection };
+function query(text, params) {
+  return getPool().query(text, params);
+}
+
+async function transaction(callback) {
+  const client = await getPool().connect();
+
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+async function healthcheck() {
+  if (supabaseRest.isEnabled()) {
+    return supabaseRest.healthcheck();
+  }
+
+  const result = await query('select now() as server_time');
+  return result.rows[0];
+}
+
+module.exports = { getPool, query, transaction, healthcheck };

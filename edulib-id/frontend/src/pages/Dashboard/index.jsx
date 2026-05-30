@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -19,40 +19,81 @@ import { sessionService } from '../../services/sessionService.js';
 import { eventService } from '../../services/eventService.js';
 
 export default function DashboardPage() {
-  const [, setTick] = useState(0);
+  const [stats, setStats] = useState({
+    students: 0,
+    booksTitles: 0,
+    totalCopies: 0,
+    availableCopies: 0,
+    activeLoans: 0,
+    overdueLoans: 0,
+    todayEntries: 0,
+    todayExits: 0,
+  });
+  const [events, setEvents] = useState([]);
+  const [availableBooks, setAvailableBooks] = useState([]);
+  const [studentLabels, setStudentLabels] = useState({});
 
   useEffect(() => {
-    loanService.refreshOverdueStatus();
-    const interval = setInterval(() => setTick((t) => t + 1), 5000);
-    return () => clearInterval(interval);
-  }, []);
+    let alive = true;
 
-  const stats = useMemo(() => {
-    const students = studentService.list();
-    const books = bookService.list();
-    const activeLoans = loanService.list({ status: 'active' });
-    const overdueLoans = loanService.list({ status: 'overdue' });
-    const totalCopies = books.reduce((acc, b) => acc + (b.copies || 0), 0);
-    const availableCopies = books.reduce((acc, b) => acc + (b.available || 0), 0);
-    return {
-      students: students.length,
-      booksTitles: books.length,
-      totalCopies,
-      availableCopies,
-      activeLoans: activeLoans.length,
-      overdueLoans: overdueLoans.length,
-      todayEntries: sessionService.countToday('entry'),
-      todayExits: sessionService.countToday('exit'),
+    async function loadDashboard() {
+      await loanService.refreshOverdueStatus();
+
+      const [students, books, activeLoans, overdueLoans, todayEntries, todayExits, recentEvents] =
+        await Promise.all([
+          studentService.list(),
+          bookService.list(),
+          loanService.list({ status: 'active' }),
+          loanService.list({ status: 'overdue' }),
+          sessionService.countToday('entry'),
+          sessionService.countToday('exit'),
+          eventService.list({ limit: 20 }),
+        ]);
+
+      const totalCopies = books.reduce((acc, b) => acc + (b.copies || 0), 0);
+      const availableCopies = books.reduce((acc, b) => acc + (b.available || 0), 0);
+      const labels = Object.fromEntries(students.map((s) => [s.id, `${s.name} - ${s.registration}`]));
+
+      if (!alive) return;
+
+      setStats({
+        students: students.length,
+        booksTitles: books.length,
+        totalCopies,
+        availableCopies,
+        activeLoans: activeLoans.length,
+        overdueLoans: overdueLoans.length,
+        todayEntries,
+        todayExits,
+      });
+      setEvents(recentEvents);
+      setStudentLabels(labels);
+      setAvailableBooks(
+        [...books]
+          .sort((a, b) => b.available - a.available)
+          .slice(0, 8)
+      );
+    }
+
+    const run = () => {
+      loadDashboard().catch((err) => {
+        console.error('[dashboard]', err);
+      });
+    };
+
+    run();
+    const interval = setInterval(run, 5000);
+
+    return () => {
+      alive = false;
+      clearInterval(interval);
     };
   }, []);
-
-  const events = useMemo(() => eventService.list({ limit: 20 }), []);
 
   const labelForEvent = (event) => {
     const { payload } = event;
     if (payload?.studentId) {
-      const s = studentService.findById(payload.studentId);
-      if (s) return `${s.name} - ${s.registration}`;
+      return studentLabels[payload.studentId] || payload.studentId;
     }
     return JSON.stringify(payload);
   };
@@ -89,10 +130,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader title="Livros disponiveis" subtitle="Mais copias disponiveis" />
           <ul className="divide-y divide-slate-100">
-            {bookService
-              .list()
-              .sort((a, b) => b.available - a.available)
-              .slice(0, 8)
+            {availableBooks
               .map((b) => (
                 <li key={b.id} className="flex items-center justify-between py-2 text-sm">
                   <div>

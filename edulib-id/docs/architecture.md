@@ -4,7 +4,7 @@
 
 ```
 +-------------+      HTTP       +--------------+      SQL      +-------------+
-|  Frontend   | <--- (futuro) ---> |   Backend    | -----------> | PostgreSQL  |
+|  Frontend   | <--- HTTP ---> |   Backend    | -----------> | PostgreSQL  |
 | React/Vite  |                  | Express/Node |              |  / Supabase |
 +-------------+                  +--------------+              +-------------+
        |
@@ -16,7 +16,7 @@
 +-------------+
 ```
 
-No **MVP**, o frontend e completamente autonomo: toda persistencia vai para `localStorage` atraves de `frontend/src/utils/storage.js`. O backend Express ja esta implementado em paralelo, com store em memoria, e expoe os mesmos contratos REST que o frontend usara depois.
+O frontend pode rodar em dois modos. Com `VITE_USE_BACKEND=false`, ele usa `localStorage` para demo offline. Com `VITE_USE_BACKEND=true`, os services chamam a API Express, e o backend persiste no PostgreSQL/Supabase via `DATABASE_URL`.
 
 ## Camadas do frontend
 
@@ -65,8 +65,9 @@ No **MVP**, o frontend e completamente autonomo: toda persistencia vai para `loc
 
 Quando for hora de sair do localStorage:
 
-1. **Backend**: substituir `backend/src/config/database.js` para usar um pool PostgreSQL ou Supabase. Aplicar os arquivos em `database/schema/*.sql`.
-2. **Frontend**: definir `VITE_USE_BACKEND=true` no `.env` e adaptar cada service para usar `api.js` no lugar de `utils/storage.js` (a assinatura das funcoes nao muda).
-3. **UI**: nao precisa mudar.
+1. **Banco**: aplicar `database/supabase/schema.sql` e opcionalmente `database/supabase/seed.sql`.
+2. **Backend**: configurar `DATABASE_URL` e `DATABASE_SSL=true` no `backend/.env`.
+3. **Frontend**: definir `VITE_USE_BACKEND=true` no `frontend/.env`.
+4. **UI**: nao precisa mudar.
 
 A clausula chave dessa arquitetura e que **paginas e componentes nao conhecem o storage**. Eles consomem services, que sao a unica peca a ser trocada.

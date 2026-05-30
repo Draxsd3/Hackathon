@@ -39,7 +39,9 @@ psql -d edulib_id -f seed/booksSeed.sql
 
 ## Supabase
 
-Crie um novo projeto e cole o conteudo dos arquivos no SQL Editor, na mesma ordem acima. Habilite RLS conforme a politica de acesso desejada para cada tabela.
+Use `supabase/schema.sql` para criar todas as tabelas, indices, triggers de `updated_at` e RLS em uma unica execucao. Depois aplique `supabase/seed.sql` para popular o acervo inicial.
+
+O backend usa conexao Postgres direta via `DATABASE_URL`, entao nao exponha senha do banco nem service role key no frontend. Em Supabase, mantenha `DATABASE_SSL=true`.
 
 ## Migracao do MVP
 

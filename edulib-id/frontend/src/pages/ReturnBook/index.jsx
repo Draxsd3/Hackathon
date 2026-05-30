@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookCheck, RotateCcw, CalendarClock } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader.jsx';
 import { Card, CardHeader } from '../../components/common/Card.jsx';
@@ -14,18 +14,46 @@ export default function ReturnBookPage() {
   const toast = useToast();
   const [student, setStudent] = useState(null);
   const [tick, setTick] = useState(0);
+  const [loans, setLoans] = useState([]);
 
-  const loans = useMemo(() => {
-    if (!student) return [];
-    return loanService.activeByStudent(student.id).map((l) => ({
-      ...l,
-      book: bookService.findById(l.bookId),
-    }));
-  }, [student, tick]);
+  useEffect(() => {
+    let alive = true;
 
-  const returnLoan = (loanId) => {
+    async function loadLoans() {
+      if (!student) {
+        setLoans([]);
+        return;
+      }
+
+      const activeLoans = await loanService.activeByStudent(student.id);
+      const withBooks = await Promise.all(
+        activeLoans.map(async (loan) => {
+          try {
+            return { ...loan, book: await bookService.findById(loan.bookId) };
+          } catch {
+            return { ...loan, book: null };
+          }
+        })
+      );
+
+      if (alive) setLoans(withBooks);
+    }
+
+    loadLoans().catch((err) => {
+      if (alive) {
+        setLoans([]);
+        toast.error(err.message || 'Erro ao carregar emprestimos');
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [student, tick, toast]);
+
+  const returnLoan = async (loanId) => {
     try {
-      loanService.returnLoan(loanId);
+      await loanService.returnLoan(loanId);
       toast.success('Livro devolvido.');
       setTick((t) => t + 1);
     } catch (err) {

@@ -6,6 +6,8 @@ Todas as rotas tem prefixo `/api/v1` e retornam JSON.
 
 `GET /api/v1/health` -> `200 { status, service, timestamp }`
 
+`GET /api/v1/health/db` -> `200 { status, database, serverTime, timestamp }`
+
 ## Students
 
 | Metodo | Rota                       | Descricao                       |
@@ -42,6 +44,7 @@ Todas as rotas tem prefixo `/api/v1` e retornam JSON.
 | GET    | `/loans?studentId=&status=`   | Lista                                     |
 | GET    | `/loans/:id`                  | Detalhe                                   |
 | POST   | `/loans`                      | Body: `{ studentId*, bookId*, days?, notes? }` |
+| POST   | `/loans/refresh-overdue`      | Atualiza emprestimos vencidos             |
 | POST   | `/loans/:id/return`           | Marca como devolvido                      |
 
 Erros:
@@ -66,6 +69,6 @@ Erros:
 
 ## Persistencia atual
 
-- Backend usa store em memoria (`config/database.js`) para o MVP.
-- Frontend persiste em `localStorage` (`utils/storage.js`).
-- Os shapes e contratos ja estao alinhados com `database/schema/*.sql`, pronto para migrar.
+- Backend usa PostgreSQL/Supabase via `DATABASE_URL`.
+- Frontend usa a API quando `VITE_USE_BACKEND=true`; com `false`, usa `localStorage`.
+- O schema consolidado para Supabase fica em `database/supabase/schema.sql`.

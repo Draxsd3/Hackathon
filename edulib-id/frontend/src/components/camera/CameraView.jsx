@@ -35,7 +35,10 @@ export const CameraView = forwardRef(function CameraView({ autoStart = true, cla
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-900/85 px-4 text-center text-white">
           <CameraOff className="h-8 w-8" />
           <p className="text-sm">Nao foi possivel acessar a camera.</p>
-          <p className="text-xs text-slate-300">{error?.message}</p>
+          <p className="max-w-xs text-xs text-slate-300">{error?.message}</p>
+          {error?.technicalMessage && error.technicalMessage !== error.message && (
+            <p className="max-w-xs text-[11px] text-slate-400">{error.technicalMessage}</p>
+          )}
           <button type="button" onClick={start} className="btn btn-secondary mt-2">
             Tentar novamente
           </button>

@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "set VITE_DEV_HTTPS=true&& vite --host 0.0.0.0 --port 5174",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
     "axios": "^1.7.9",
+    "face-api.js": "^0.22.2",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
@@ -19,6 +21,7 @@
     "react-router-dom": "^7.1.1"
   },
   "devDependencies": {
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",

@@ -25,7 +25,7 @@ export function SessionPage({ type, title, subtitle, icon, ctaLabel, successLabe
     if (!student) return;
     setSaving(true);
     try {
-      const session = sessionService.create({ studentId: student.id, type, method });
+      const session = await sessionService.create({ studentId: student.id, type, method });
       setLastSession({ session, student });
       toast.success(`${successLabel}: ${student.name}`);
       setStudent(null);

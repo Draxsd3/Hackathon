@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BookPlus, Check, BookOpen } from 'lucide-react';
 import { PageHeader } from '../../components/common/PageHeader.jsx';
 import { Card, CardHeader } from '../../components/common/Card.jsx';
@@ -21,18 +21,39 @@ export default function LoanPage() {
   const [query, setQuery] = useState('');
   const [days, setDays] = useState(7);
   const [saving, setSaving] = useState(false);
+  const [results, setResults] = useState([]);
   const debounced = useDebounce(query, 200);
 
-  const results = useMemo(() => {
-    if (!debounced) return [];
-    return bookService.list({ search: debounced }).slice(0, 8);
-  }, [debounced]);
+  useEffect(() => {
+    let alive = true;
+
+    async function searchBooks() {
+      if (!debounced) {
+        setResults([]);
+        return;
+      }
+
+      const books = await bookService.list({ search: debounced });
+      if (alive) setResults(books.slice(0, 8));
+    }
+
+    searchBooks().catch((err) => {
+      if (alive) {
+        setResults([]);
+        toast.error(err.message || 'Erro ao buscar livros');
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, [debounced, toast]);
 
   const submit = async () => {
     if (!student || !book) return;
     setSaving(true);
     try {
-      const loan = loanService.create({ studentId: student.id, bookId: book.id, days });
+      const loan = await loanService.create({ studentId: student.id, bookId: book.id, days });
       toast.success(`Emprestimo criado. Devolucao ate ${formatDate(loan.dueDate)}.`);
       setStudent(null);
       setBook(null);
