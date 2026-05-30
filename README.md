@@ -1,5 +1,12 @@
 https://edulibid.vercel.app/
 https://edulibid.vercel.app/nfc-mobile
 
-<img width="1402" height="1122" alt="016bdec5-9067-4c2f-ac7f-1ba1dadab977" src="https://github.com/user-attachments/assets/c1ebe8a3-d00e-4641-afc5-2352ce262512" />
+
+Fluxo externo 
+
+<img width="1536" height="1024" alt="ChatGPT Image 30 de mai  de 2026, 19_12_35" src="https://github.com/user-attachments/assets/29a1f9a1-b8b5-40f5-aac6-c156a80e4fe5" />
+
+Flluxo interno 
+
+<img width="1402" height="1122" alt="ChatGPT Image 30 de mai  de 2026, 19_07_24" src="https://github.com/user-attachments/assets/6f203474-a715-42c6-b0d1-5ad4a06726d6" />
 
