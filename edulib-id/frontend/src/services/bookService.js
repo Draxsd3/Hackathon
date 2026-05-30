@@ -29,6 +29,24 @@ export const bookService = {
     return storage.findById(COLLECTIONS.BOOKS, id);
   },
 
+  async findByRfid(rfid) {
+    const tag = String(rfid || '').trim();
+    if (!tag) return null;
+
+    if (USE_BACKEND) {
+      const response = await api.get('/books', { params: { search: tag } });
+      const items = response.data.data || [];
+      // O search do backend retorna por similaridade em varios campos, entao
+      // filtramos pelo match exato no campo rfid para garantir o exemplar certo.
+      return items.find((b) => String(b.rfid || '').toUpperCase() === tag.toUpperCase()) || null;
+    }
+
+    return storage.findOne(
+      COLLECTIONS.BOOKS,
+      (b) => String(b.rfid || b.nfcTag || '').toUpperCase() === tag.toUpperCase()
+    );
+  },
+
   async create(data) {
     const copies = Number(data.copies) || 1;
     if (USE_BACKEND) {

@@ -32,6 +32,40 @@ export const loanService = {
     return (await this.list({ studentId })).filter((l) => l.status !== 'returned');
   },
 
+  async findActiveByBookId(bookId) {
+    if (!bookId) return null;
+    // O backend nao expoe filtro por bookId, entao puxamos ativos e filtramos
+    // client-side. Como o numero de emprestimos ativos e baixo, isso e ok.
+    const active = await this.list({ status: 'active' });
+    return active.find((l) => l.bookId === bookId) || null;
+  },
+
+  /**
+   * Devolve um livro a partir do UID NFC lido na etiqueta.
+   * Erros possiveis:
+   *  - BOOK_NOT_FOUND : nenhum livro vinculado a essa etiqueta
+   *  - LOAN_NOT_FOUND : livro existe mas nao esta emprestado
+   */
+  async returnByRfid(rfid) {
+    const book = await bookService.findByRfid(rfid);
+    if (!book) {
+      const err = new Error('Nenhum livro vinculado a essa etiqueta NFC.');
+      err.code = 'BOOK_NOT_FOUND';
+      throw err;
+    }
+
+    const loan = await this.findActiveByBookId(book.id);
+    if (!loan) {
+      const err = new Error(`O livro "${book.title}" nao consta como emprestado.`);
+      err.code = 'LOAN_NOT_FOUND';
+      err.book = book;
+      throw err;
+    }
+
+    const returned = await this.returnLoan(loan.id);
+    return { loan: returned, book };
+  },
+
   async create({ studentId, bookId, days = DEFAULT_LOAN_DAYS, notes }) {
     if (USE_BACKEND) {
       const response = await api.post('/loans', { studentId, bookId, days, notes });
