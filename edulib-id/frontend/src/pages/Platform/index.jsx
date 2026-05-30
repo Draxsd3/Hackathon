@@ -3951,6 +3951,9 @@ function AuditModule({ books }) {
   const [feedback, setFeedback] = useState(null); // { type: 'success'|'duplicate'|'unknown'|'error', message }
   const [readerStatus, setReaderStatus] = useState('idle'); // idle | waiting | error | unavailable
   const [readerError, setReaderError] = useState('');
+  // IDs de eventos audit.* ja aplicados ao estado local (evita dupla aplicacao
+  // quando o polling traz de volta um evento que nos mesmos criamos).
+  const appliedEventIdsRef = useRef(new Set());
 
   const total = books.length;
   const validatedCount = Object.keys(validatedMap).length;
@@ -3973,6 +3976,20 @@ function AuditModule({ books }) {
   const normalizeTag = (raw) =>
     String(raw || '').replace(/^nfc:/i, '').replace(/[:\s]/g, '').trim().toUpperCase();
 
+  // Cria um evento e ja registra o ID como aplicado localmente, para que o
+  // polling subsequente nao tente reaplicar e gerar feedback duplicado.
+  const createAuditEvent = (data) =>
+    eventService
+      .create(data)
+      .then((event) => {
+        if (event?.id) appliedEventIdsRef.current.add(event.id);
+        return event;
+      })
+      .catch((err) => {
+        console.warn('[audit] event create failed:', err?.message || err);
+        return null;
+      });
+
   const handleTag = useCallback(
     (rawTag) => {
       const tag = normalizeTag(rawTag);
@@ -3984,28 +4001,25 @@ function AuditModule({ books }) {
       if (!book) {
         setUnknownTags((prev) => [{ tag, at }, ...prev].slice(0, 20));
         setFeedback({ type: 'unknown', message: `Tag desconhecida: ${tag}` });
-        eventService
-          .create({ type: 'audit.tag.unknown', payload: { tag, at } })
-          .catch(() => {});
+        createAuditEvent({ type: 'audit.tag.unknown', payload: { tag, at, source: 'platform' } });
         return;
       }
 
       if (book.id in validatedMap) {
         setFeedback({ type: 'duplicate', message: `"${book.title}" ja foi validado.` });
-        eventService
-          .create({ type: 'audit.tag.duplicate', payload: { bookId: book.id, tag, at } })
-          .catch(() => {});
+        createAuditEvent({
+          type: 'audit.tag.duplicate',
+          payload: { bookId: book.id, tag, at, source: 'platform' },
+        });
         return;
       }
 
       setValidatedMap((prev) => ({ ...prev, [book.id]: at }));
       setFeedback({ type: 'success', message: `"${book.title}" validado.` });
-      eventService
-        .create({
-          type: 'audit.book.validated',
-          payload: { bookId: book.id, title: book.title, rfid: tag, at },
-        })
-        .catch(() => {});
+      createAuditEvent({
+        type: 'audit.book.validated',
+        payload: { bookId: book.id, title: book.title, rfid: tag, at, source: 'platform' },
+      });
     },
     [books, validatedMap]
   );
@@ -4015,6 +4029,109 @@ function AuditModule({ books }) {
   useEffect(() => {
     handleTagRef.current = handleTag;
   }, [handleTag]);
+
+  // Aplica um evento audit.* vindo do polling no estado local.
+  // Eventos criados aqui mesmo ja entram no appliedEventIdsRef e nao chegam aqui.
+  const applyAuditEvent = useCallback(
+    (event) => {
+      const { type, payload = {}, timestamp } = event;
+      switch (type) {
+        case 'audit.started': {
+          // Apenas auto-inicia se o evento for recente (< 90s) - evita
+          // ressuscitar uma sessao antiga ao abrir a tela.
+          const ageMs = Date.now() - new Date(timestamp).getTime();
+          if (Number.isFinite(ageMs) && ageMs < 90000) {
+            setValidatedMap({});
+            setUnknownTags([]);
+            setFeedback({ type: 'success', message: 'Auditoria iniciada no celular.' });
+            setStatus('running');
+          }
+          break;
+        }
+        case 'audit.book.validated': {
+          if (!payload.bookId) return;
+          const at = payload.at || timestamp;
+          setValidatedMap((prev) =>
+            prev[payload.bookId] ? prev : { ...prev, [payload.bookId]: at }
+          );
+          const book = books.find((b) => b.id === payload.bookId);
+          setFeedback({
+            type: 'success',
+            message: book ? `"${book.title}" validado.` : `Livro validado (id ${payload.bookId}).`,
+          });
+          break;
+        }
+        case 'audit.tag.unknown': {
+          if (!payload.tag) return;
+          const at = payload.at || timestamp;
+          setUnknownTags((prev) => {
+            if (prev.some((t) => t.tag === payload.tag && t.at === at)) return prev;
+            return [{ tag: payload.tag, at }, ...prev].slice(0, 20);
+          });
+          setFeedback({ type: 'unknown', message: `Tag desconhecida: ${payload.tag}` });
+          break;
+        }
+        case 'audit.tag.duplicate': {
+          if (!payload.bookId) return;
+          const book = books.find((b) => b.id === payload.bookId);
+          if (book) {
+            setFeedback({ type: 'duplicate', message: `"${book.title}" ja foi validado.` });
+          }
+          break;
+        }
+        case 'audit.paused':
+          setStatus('paused');
+          break;
+        case 'audit.resumed':
+          setStatus('running');
+          break;
+        case 'audit.finished':
+          setStatus('finished');
+          break;
+        default:
+          break;
+      }
+    },
+    [books]
+  );
+
+  // Polling de eventos: a cada 3s busca eventos audit.* novos e aplica.
+  // Mantem o desktop em sincronia com a auditoria em andamento no /audit-mobile.
+  useEffect(() => {
+    let cancelled = false;
+    let busy = false;
+
+    const poll = async () => {
+      if (busy || cancelled) return;
+      busy = true;
+      try {
+        const events = await eventService.list({ limit: 100 });
+        if (cancelled || !Array.isArray(events)) return;
+
+        const newAuditEvents = events
+          .filter(
+            (e) => e?.type?.startsWith?.('audit.') && e.id && !appliedEventIdsRef.current.has(e.id)
+          )
+          .sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+
+        for (const event of newAuditEvents) {
+          appliedEventIdsRef.current.add(event.id);
+          applyAuditEvent(event);
+        }
+      } catch (err) {
+        console.warn('[audit] poll failed:', err?.message || err);
+      } finally {
+        busy = false;
+      }
+    };
+
+    poll();
+    const timer = window.setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [applyAuditEvent]);
 
   // Leitor NFC continuo: inicia quando a auditoria entra em 'running' e
   // para em qualquer outro estado.
@@ -4066,23 +4183,25 @@ function AuditModule({ books }) {
     setUnknownTags([]);
     setFeedback(null);
     setStatus('running');
-    eventService.create({ type: 'audit.started', payload: { total } }).catch(() => {});
+    createAuditEvent({ type: 'audit.started', payload: { total, source: 'platform' } });
     toast.success('Auditoria iniciada.');
   };
 
   const pause = () => {
     setStatus('paused');
-    eventService
-      .create({ type: 'audit.paused', payload: { validatedCount, pendingCount } })
-      .catch(() => {});
+    createAuditEvent({
+      type: 'audit.paused',
+      payload: { validatedCount, pendingCount, source: 'platform' },
+    });
     toast.info('Auditoria pausada.');
   };
 
   const resume = () => {
     setStatus('running');
-    eventService
-      .create({ type: 'audit.resumed', payload: { validatedCount, pendingCount } })
-      .catch(() => {});
+    createAuditEvent({
+      type: 'audit.resumed',
+      payload: { validatedCount, pendingCount, source: 'platform' },
+    });
   };
 
   const generateReport = () => {
@@ -4117,12 +4236,17 @@ function AuditModule({ books }) {
 
   const finish = () => {
     setStatus('finished');
-    eventService
-      .create({
-        type: 'audit.finished',
-        payload: { total, validatedCount, pendingCount, percent, unknownCount: unknownTags.length },
-      })
-      .catch(() => {});
+    createAuditEvent({
+      type: 'audit.finished',
+      payload: {
+        total,
+        validatedCount,
+        pendingCount,
+        percent,
+        unknownCount: unknownTags.length,
+        source: 'platform',
+      },
+    });
     generateReport();
     toast.success('Auditoria finalizada. Relatorio baixado.');
   };
