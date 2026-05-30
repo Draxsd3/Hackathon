@@ -12,6 +12,7 @@ const validateCreate = validate((req) => {
 });
 
 router.get('/', controller.index);
+router.post('/refresh-overdue', controller.refreshOverdue);
 router.get('/:id', controller.show);
 router.post('/', validateCreate, controller.create);
 router.post('/:id/return', controller.returnLoan);

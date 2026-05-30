@@ -1,30 +1,50 @@
 const bookService = require('../services/book.service');
 
-function index(req, res) {
-  res.json({ data: bookService.list({ search: req.query.search }) });
+async function index(req, res, next) {
+  try {
+    res.json({ data: await bookService.list({ search: req.query.search }) });
+  } catch (err) {
+    next(err);
+  }
 }
 
-function show(req, res) {
-  const book = bookService.findById(req.params.id);
-  if (!book) return res.status(404).json({ error: 'NotFound' });
-  res.json({ data: book });
+async function show(req, res, next) {
+  try {
+    const book = await bookService.findById(req.params.id);
+    if (!book) return res.status(404).json({ error: 'NotFound' });
+    res.json({ data: book });
+  } catch (err) {
+    next(err);
+  }
 }
 
-function create(req, res) {
-  const book = bookService.create(req.body);
-  res.status(201).json({ data: book });
+async function create(req, res, next) {
+  try {
+    const book = await bookService.create(req.body);
+    res.status(201).json({ data: book });
+  } catch (err) {
+    next(err);
+  }
 }
 
-function update(req, res) {
-  const book = bookService.update(req.params.id, req.body);
-  if (!book) return res.status(404).json({ error: 'NotFound' });
-  res.json({ data: book });
+async function update(req, res, next) {
+  try {
+    const book = await bookService.update(req.params.id, req.body);
+    if (!book) return res.status(404).json({ error: 'NotFound' });
+    res.json({ data: book });
+  } catch (err) {
+    next(err);
+  }
 }
 
-function destroy(req, res) {
-  const ok = bookService.remove(req.params.id);
-  if (!ok) return res.status(404).json({ error: 'NotFound' });
-  res.status(204).send();
+async function destroy(req, res, next) {
+  try {
+    const ok = await bookService.remove(req.params.id);
+    if (!ok) return res.status(404).json({ error: 'NotFound' });
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = { index, show, create, update, destroy };

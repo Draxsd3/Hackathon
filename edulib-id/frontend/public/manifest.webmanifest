@@ -1,0 +1,19 @@
+{
+  "name": "EduLib NFC",
+  "short_name": "EduLib NFC",
+  "description": "Leitor mobile NFC para exemplares da biblioteca EduLib ID.",
+  "start_url": "/nfc-mobile",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef2f5",
+  "theme_color": "#b70f16",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

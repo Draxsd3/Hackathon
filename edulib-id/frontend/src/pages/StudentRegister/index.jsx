@@ -38,12 +38,12 @@ export default function StudentRegisterPage() {
     if (!validate()) return;
     setSaving(true);
     try {
-      const student = studentService.create({
+      const student = await studentService.create({
         ...form,
         photo: capture?.photo || null,
         faceDescriptor: capture?.descriptor || null,
       });
-      eventService.create({
+      await eventService.create({
         type: 'student.created',
         payload: { studentId: student.id, name: student.name },
       });

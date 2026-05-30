@@ -1,10 +1,23 @@
 const eventService = require('../services/event.service');
 
-function index(req, res) {
-  const { type, limit } = req.query;
-  res.json({
-    data: eventService.list({ type, limit: limit ? Number(limit) : undefined }),
-  });
+async function index(req, res, next) {
+  try {
+    const { type, limit } = req.query;
+    res.json({
+      data: await eventService.list({ type, limit: limit ? Number(limit) : undefined }),
+    });
+  } catch (err) {
+    next(err);
+  }
 }
 
-module.exports = { index };
+async function create(req, res, next) {
+  try {
+    const event = await eventService.create(req.body);
+    res.status(201).json({ data: event });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { index, create };

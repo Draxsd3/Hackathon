@@ -20,8 +20,8 @@ O Edulib-ID permite que escolas controlem entradas, saidas, emprestimos e devolu
 - Express.js
 
 ### Banco de Dados
-- **MVP:** localStorage (camada `utils/storage.js` faz o acoplamento)
-- **Producao:** preparado para migrar para PostgreSQL/Supabase sem mudar a camada de servicos
+- **Offline/demo:** localStorage no frontend (`VITE_USE_BACKEND=false`)
+- **Integrado:** backend Express conectado ao PostgreSQL/Supabase via `DATABASE_URL`
 
 ## Estrutura de Pastas
 
@@ -67,11 +67,13 @@ npm run dev:backend    # http://localhost:3001
 
 ## Migracao para banco real
 
-Toda persistencia passa por `frontend/src/services/*` que internamente usa `utils/storage.js`. Para migrar:
+Toda persistencia passa por `frontend/src/services/*`. Para rodar conectado ao Supabase:
 
-1. Implemente os endpoints no `backend/src/routes` (controllers ja prontos)
-2. Aplique os schemas em `database/schema/*.sql`
-3. Troque a implementacao de `utils/storage.js` por chamadas `api.js` ao backend
+1. Aplique `database/supabase/schema.sql` no projeto Supabase correto.
+2. Aplique `database/supabase/seed.sql` se quiser iniciar com livros de exemplo.
+3. Configure `backend/.env` com `DATABASE_URL` e `DATABASE_SSL=true`.
+4. Configure `frontend/.env` com `VITE_USE_BACKEND=true`.
+5. Rode `npm run dev`.
 
 Veja [docs/architecture.md](docs/architecture.md) para detalhes.
 

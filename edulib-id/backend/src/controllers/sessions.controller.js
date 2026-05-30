@@ -1,20 +1,35 @@
 const sessionService = require('../services/session.service');
-const studentService = require('../services/student.service');
 
-function index(req, res) {
-  res.json({ data: sessionService.list(req.query) });
+async function index(req, res, next) {
+  try {
+    res.json({ data: await sessionService.list(req.query) });
+  } catch (err) {
+    next(err);
+  }
 }
 
-function create(req, res) {
-  const { studentId, type } = req.body;
-  if (!studentService.findById(studentId)) {
-    return res.status(404).json({ error: 'NotFound', message: 'Aluno nao encontrado' });
+async function lastByStudent(req, res, next) {
+  try {
+    res.json({ data: await sessionService.lastByStudent(req.params.studentId) });
+  } catch (err) {
+    next(err);
   }
-  if (!['entry', 'exit'].includes(type)) {
-    return res.status(400).json({ error: 'ValidationError', message: 'type deve ser entry ou exit' });
-  }
-  const session = sessionService.create(req.body);
-  res.status(201).json({ data: session });
 }
 
-module.exports = { index, create };
+async function create(req, res, next) {
+  try {
+    const { studentId, type } = req.body;
+    if (!studentId) {
+      return res.status(400).json({ error: 'ValidationError', message: 'studentId e obrigatorio' });
+    }
+    if (!['entry', 'exit'].includes(type)) {
+      return res.status(400).json({ error: 'ValidationError', message: 'type deve ser entry ou exit' });
+    }
+    const session = await sessionService.create(req.body);
+    res.status(201).json({ data: session });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { index, lastByStudent, create };

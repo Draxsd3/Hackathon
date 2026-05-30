@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Camera, RotateCcw } from 'lucide-react';
 import { CameraView } from './CameraView.jsx';
 import { Button } from '../common/Button.jsx';
-import { captureFrame, computeDescriptor } from '../../utils/facialUtils.js';
+import { captureFrame, computeDescriptor, detectFacePresence } from '../../utils/facialUtils.js';
 
 /**
  * Componente reutilizavel: mostra preview da camera + botao "Capturar".
@@ -12,16 +12,26 @@ export function FaceCapture({ onCapture, label = 'Capturar foto', autoStart = tr
   const cameraRef = useRef(null);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const capture = async () => {
     const video = cameraRef.current?.getVideo();
     if (!video) return;
     setLoading(true);
+    setError(null);
     try {
-      const dataUrl = captureFrame(video);
+      const probeFrame = captureFrame(video, 480, 0.78);
+      const facePresence = await detectFacePresence(probeFrame);
+      if (!facePresence?.quality?.ready) {
+        throw new Error(facePresence?.quality?.message || 'Centralize o rosto antes de capturar.');
+      }
+
+      const dataUrl = captureFrame(video, 960, 0.92);
       const descriptor = await computeDescriptor(dataUrl);
       setPreview(dataUrl);
       onCapture?.({ photo: dataUrl, descriptor });
+    } catch (err) {
+      setError(err.message || 'Nao foi possivel capturar o FaceID.');
     } finally {
       setLoading(false);
     }
@@ -29,6 +39,7 @@ export function FaceCapture({ onCapture, label = 'Capturar foto', autoStart = tr
 
   const retake = () => {
     setPreview(null);
+    setError(null);
     onCapture?.(null);
   };
 
@@ -52,6 +63,7 @@ export function FaceCapture({ onCapture, label = 'Capturar foto', autoStart = tr
           </Button>
         )}
       </div>
+      {error && <p className="text-center text-xs font-medium text-red-600">{error}</p>}
     </div>
   );
 }

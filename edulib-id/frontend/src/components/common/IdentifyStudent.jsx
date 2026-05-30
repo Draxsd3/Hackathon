@@ -1,13 +1,12 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScanLine, Search, Camera, X } from 'lucide-react';
 import { studentService } from '../../services/studentService.js';
 import { parsePayload } from '../../utils/qrUtils.js';
-import { computeDescriptor, captureFrame } from '../../utils/facialUtils.js';
+import { computeDescriptor, captureFrame, detectFacePresence } from '../../utils/facialUtils.js';
 import { QRScanner } from '../qr/QRScanner.jsx';
 import { CameraView } from '../camera/CameraView.jsx';
 import { Button } from './Button.jsx';
 import { useDebounce } from '../../hooks/useDebounce.js';
-import { useRef } from 'react';
 
 const METHODS = [
   { key: 'search', label: 'Buscar', icon: Search },
@@ -75,10 +74,37 @@ export function IdentifyStudent({ onIdentify, onClear, selected }) {
 
 function SearchMode({ onIdentify }) {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState(null);
   const debounced = useDebounce(query, 200);
-  const results = useMemo(() => {
-    if (!debounced) return [];
-    return studentService.list({ search: debounced }).slice(0, 8);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function searchStudents() {
+      if (!debounced) {
+        setResults([]);
+        setError(null);
+        return;
+      }
+
+      const students = await studentService.list({ search: debounced });
+      if (alive) {
+        setResults(students.slice(0, 8));
+        setError(null);
+      }
+    }
+
+    searchStudents().catch((err) => {
+      if (alive) {
+        setResults([]);
+        setError(err.message || 'Erro ao buscar alunos');
+      }
+    });
+
+    return () => {
+      alive = false;
+    };
   }, [debounced]);
 
   return (
@@ -90,6 +116,7 @@ function SearchMode({ onIdentify }) {
         className="input"
         autoFocus
       />
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
       {debounced && (
         <ul className="mt-2 max-h-60 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200 bg-white">
           {results.length === 0 ? (
@@ -128,19 +155,23 @@ function SearchMode({ onIdentify }) {
 function QrMode({ onIdentify }) {
   const [error, setError] = useState(null);
 
-  const onResult = (text) => {
-    const parsed = parsePayload(text);
-    if (!parsed || parsed.kind !== 'student') {
-      setError('QR invalido para aluno');
-      return;
+  const onResult = async (text) => {
+    try {
+      const parsed = parsePayload(text);
+      if (!parsed || parsed.kind !== 'student') {
+        setError('QR invalido para aluno');
+        return;
+      }
+      const student = await studentService.findById(parsed.id);
+      if (!student) {
+        setError('Aluno nao encontrado');
+        return;
+      }
+      setError(null);
+      onIdentify(student);
+    } catch (err) {
+      setError(err.message || 'Erro ao buscar aluno');
     }
-    const student = studentService.findById(parsed.id);
-    if (!student) {
-      setError('Aluno nao encontrado');
-      return;
-    }
-    setError(null);
-    onIdentify(student);
   };
 
   return (
@@ -163,14 +194,23 @@ function FaceMode({ onIdentify }) {
     setMatching(true);
     setError(null);
     try {
-      const dataUrl = captureFrame(video);
+      const probeFrame = captureFrame(video, 480, 0.78);
+      const facePresence = await detectFacePresence(probeFrame);
+      if (!facePresence?.quality?.ready) {
+        setError(facePresence?.quality?.message || 'Centralize o rosto antes de identificar.');
+        return;
+      }
+
+      const dataUrl = captureFrame(video, 960, 0.92);
       const descriptor = await computeDescriptor(dataUrl);
-      const match = studentService.identifyByFace(descriptor);
+      const match = await studentService.identifyByFace(descriptor);
       if (!match) {
         setError('Nenhum aluno com essa face foi encontrado.');
         return;
       }
       onIdentify(match);
+    } catch (err) {
+      setError(err.message || 'Erro ao identificar aluno.');
     } finally {
       setMatching(false);
     }

@@ -1,8 +1,14 @@
 import { storage, COLLECTIONS } from '../utils/storage.js';
 import { eventService } from './eventService.js';
+import { api, USE_BACKEND } from './api.js';
 
 export const sessionService = {
-  list({ studentId, type, from, to } = {}) {
+  async list({ studentId, type, from, to } = {}) {
+    if (USE_BACKEND) {
+      const response = await api.get('/sessions', { params: { studentId, type, from, to } });
+      return response.data.data;
+    }
+
     let items = storage.list(COLLECTIONS.SESSIONS);
     if (studentId) items = items.filter((s) => s.studentId === studentId);
     if (type) items = items.filter((s) => s.type === type);
@@ -11,10 +17,16 @@ export const sessionService = {
     return items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   },
 
-  create({ studentId, type, method = 'manual', notes }) {
+  async create({ studentId, type, method = 'manual', notes }) {
     if (!['entry', 'exit'].includes(type)) {
       throw new Error('type deve ser entry ou exit');
     }
+
+    if (USE_BACKEND) {
+      const response = await api.post('/sessions', { studentId, type, method, notes });
+      return response.data.data;
+    }
+
     const session = storage.create(COLLECTIONS.SESSIONS, {
       studentId,
       type,
@@ -22,21 +34,26 @@ export const sessionService = {
       notes: notes || null,
       timestamp: new Date().toISOString(),
     });
-    eventService.create({
+    await eventService.create({
       type: type === 'entry' ? 'session.entry' : 'session.exit',
       payload: { sessionId: session.id, studentId, method },
     });
     return session;
   },
 
-  lastByStudent(studentId) {
-    return this.list({ studentId })[0] || null;
+  async lastByStudent(studentId) {
+    if (USE_BACKEND) {
+      const response = await api.get(`/sessions/last/${encodeURIComponent(studentId)}`);
+      return response.data.data || null;
+    }
+
+    return (await this.list({ studentId }))[0] || null;
   },
 
-  countToday(type) {
+  async countToday(type) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const iso = today.toISOString();
-    return this.list({ type, from: iso }).length;
+    return (await this.list({ type, from: iso })).length;
   },
 };
