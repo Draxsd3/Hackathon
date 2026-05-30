@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, Save, SmartphoneNfc, XCircle } from 'lucide-react';
+import { CheckCircle2, ClipboardList, Loader2, Save, SmartphoneNfc, XCircle } from 'lucide-react';
 import { useToast } from '../../components/common/Toast.jsx';
 import { bookService } from '../../services/bookService.js';
 import { eventService } from '../../services/eventService.js';
@@ -402,17 +402,27 @@ export default function NfcMobilePage() {
         )}
 
         {mode === 'home' && (
-          <MobileButton
-            icon={Save}
-            active
-            onClick={() => {
-              setMode('register');
-              setShowManualFallback(false);
-              setFeedback({ state: 'waiting', title: 'Vincular RFID/NFC', message: 'Toque em Ler NFC e aproxime o livro.' });
-            }}
-          >
-            Vincular RFID/NFC
-          </MobileButton>
+          <div className="space-y-3">
+            <MobileButton
+              icon={ClipboardList}
+              active
+              onClick={() => {
+                window.location.href = '/audit-mobile';
+              }}
+            >
+              Iniciar auditoria dos livros
+            </MobileButton>
+            <MobileButton
+              icon={Save}
+              onClick={() => {
+                setMode('register');
+                setShowManualFallback(false);
+                setFeedback({ state: 'waiting', title: 'Vincular RFID/NFC', message: 'Toque em Ler NFC e aproxime o livro.' });
+              }}
+            >
+              Vincular RFID/NFC
+            </MobileButton>
+          </div>
         )}
 
         {mode === 'receive' && (
