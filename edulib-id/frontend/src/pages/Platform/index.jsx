@@ -3092,7 +3092,8 @@ function SessionsModule({ sessions, students }) {
   );
 }
 
-function AuditModule() {
+// eslint-disable-next-line no-unused-vars
+function SecurityAuditModule() {
   return (
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-4">
