@@ -1,0 +1,12 @@
+**/node_modules/
+**/dist/
+**/.vite/
+**/.cache/
+**/.codex-logs/
+**/.claude/
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+Thumbs.db
+.DS_Store
